@@ -1,6 +1,5 @@
 import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
-import { idtoSocket } from "../../mecca/ws-backend/src/state/stores";
 
 const wss=new WebSocketServer({port:"8080"});
 let rooms=new Map();
@@ -62,8 +61,11 @@ function votingPhase(roomId){
             answers: answers
         }));
     }
+
+    roomData.get(roomId).votingTimer=setTimeout(() => {
+        resultsPhase(roomId);
+    }, 45000);
     
-    resultsPhase(roomId);
 }
 
 
@@ -220,7 +222,7 @@ wss.on("connection",(socket)=>{
             
             // set a timeout for the submission phase here
             roomData.get(roomId).inputTimer = setTimeout(() => {
-                inputPhase(roomId);
+                votingPhase(roomId);
             }, 20000);
         }
         if(payload.type=="INPUT_SUBMIT"){
@@ -234,6 +236,7 @@ wss.on("connection",(socket)=>{
                 clearTimeout(roomData.get(roomId).inputTimer);
                 votingPhase(roomId);
             }
+
         }
         if(payload.type=='VOTE_SUBMIT'){
             const userId=socket.clientId;
