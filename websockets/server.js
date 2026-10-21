@@ -7,7 +7,7 @@ let rooms=new Map();
 let roomData=new Map();
 let uidSocket=new Map();
 let uidUsername=new Map();
-let voteInterval=new Map();
+let votes=new Map();
 let userInputs=new Map();//the guesses each user is gonna make in the round ->uid and a set of user inputs 
 const words = [
     "apple", "bridge", "candle", "dolphin", "engine",
@@ -37,48 +37,40 @@ function getParticipants(roomId){
 }
 
 
-function inputPhase(roomId){
-    roomData.get(roomId).inputTimer=setTimeout(() => {
-        const participants=rooms.get(roomId);
-        //maintain a array of inputs to username
-        let answers=[];
+function votingPhase(roomId){
+    const participants = rooms.get(roomId);
+    let answers = [];
 
-        for(const i of participants){
-            let input;
-            let userName=uidUsername.get(i);
-            if(userInputs.get(i)){
-                input=userInputs.get(i);
-            }
-            else{
-                input="not given"
-            }
-            answers.push({userName:userName,input:input})
+    for (const i of participants) {
+        let input;
+        let userName = uidUsername.get(i);
+        if (userInputs.get(i)) {
+            input = userInputs.get(i);
+        } else {
+            input = "not given";
         }
-        for(const i of participants){
-            const sock=uidSocket.get(i);
-            sock.send(JSON.stringify({
-                event:"voting started",
-                answers:answers
+        answers.push({ uid: i, userName: userName, input: input });
+    }
 
-            }))
-        }
-    }, 20000);
+    roomData.get(roomId).answers = answers;
+    roomData.get(roomId).state = "voting";
+
+    for (const i of participants) {
+        const sock = uidSocket.get(i);
+        sock.send(JSON.stringify({
+            event: "voting started",
+            answers: answers
+        }));
+    }
+    
+    resultsPhase(roomId);
 }
 
 
-function votingPhase(roomId){
-    setTimeout(()=>{
-        const participants=rooms.get(roomId);
-        for(const i of participants){
-            const sock=uidSocket.get(i);
-            sock.send(JSON.stringify({
-                event:"voting ended",
-                answers:answers
+function resultsPhase(roomId){
+    
+   //this is what will run after everyone has voted 
 
-            }))
-        }
-
-    },45000)
 }
 
 wss.on("connection",(socket)=>{
@@ -192,10 +184,37 @@ wss.on("connection",(socket)=>{
             }
             
             // set a timeout for the submission phase here
-
+            roomData.get(roomId).inputTimer = setTimeout(() => {
+                inputPhase(roomId);
+            }, 20000);
         }
         if(payload.type=="INPUT_SUBMIT"){
-          //
+            const roomId = payload.roomId;
+            const userId = socket.clientId;
+            const input = payload.input;
+
+            userInputs.set(userId, input);
+
+            if(userInputs.size == rooms.get(roomId).size){
+                clearTimeout(roomData.get(roomId).inputTimer);
+                votingPhase(roomId);
+            }
+        }
+        if(payload.type=='VOTE_SUBMIT'){
+            const userId=socket.clientId;
+            const targetId=payload.targetId;
+            const roomId=payload.roomId;
+            
+            if(!votes.get(roomId)){
+                votes.set(roomId, new Map());
+            }
+            
+            votes.get(roomId).set(userId, targetId);
+
+            if(votes.get(roomId).size == rooms.get(roomId).size){
+                clearTimeout(roomData.get(roomId).votingTimer);
+                resultsPhase(roomId); 
+            }
         }
     }  
         catch(e){
