@@ -78,6 +78,18 @@ wss.on("connection",(socket)=>{
         }
 
         if(payload.type=='START_ROOM'){
+            const userId=socket.clientId;
+            const roomId=payload.roomId;
+            if(roomData.get(roomId).hostId!=userId){
+                socket.send(JSON.stringify({
+                    event:"not authorized"
+                }))
+                return;
+            }
+            //set the room state to started 
+            //spin up the random word picker section 
+            //get participants , use a random array idnex to pick one ->set their uid  in the room state and while sending the word , make sure to exclude them 
+            //regsiter a local cron to be sent to any random participant to start saying hints for their respective word 
 
         }
     }   
