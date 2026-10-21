@@ -7,6 +7,7 @@ let rooms=new Map();
 let roomData=new Map();
 let uidSocket=new Map();
 let uidUsername=new Map();
+let voteInterval=new Map();
 let userInputs=new Map();//the guesses each user is gonna make in the round ->uid and a set of user inputs 
 const words = [
     "apple", "bridge", "candle", "dolphin", "engine",
@@ -33,6 +34,51 @@ function getParticipants(roomId){
     }
 
     return nameArray;
+}
+
+
+function inputPhase(roomId){
+    roomData.get(roomId).inputTimer=setTimeout(() => {
+        const participants=rooms.get(roomId);
+        //maintain a array of inputs to username
+        let answers=[];
+
+        for(const i of participants){
+            let input;
+            let userName=uidUsername.get(i);
+            if(userInputs.get(i)){
+                input=userInputs.get(i);
+            }
+            else{
+                input="not given"
+            }
+            answers.push({userName:userName,input:input})
+        }
+        for(const i of participants){
+            const sock=uidSocket.get(i);
+            sock.send(JSON.stringify({
+                event:"voting started",
+                answers:answers
+
+            }))
+        }
+    }, 20000);
+}
+
+
+function votingPhase(roomId){
+    setTimeout(()=>{
+        const participants=rooms.get(roomId);
+        for(const i of participants){
+            const sock=uidSocket.get(i);
+            sock.send(JSON.stringify({
+                event:"voting ended",
+                answers:answers
+
+            }))
+        }
+
+    },45000)
 }
 
 wss.on("connection",(socket)=>{
@@ -119,7 +165,7 @@ wss.on("connection",(socket)=>{
             const users=rooms.get(roomId);
              //now after choosing the word and the impostor , time to deliver it to the respective users 
             for(const i of users){
-                const sock=idtoSocket.get(i);
+                const sock=uidSocket.get(i);
                 if(i==roomData.get(roomId).impostorId){
                     sock.send(JSON.stringify({
                         event:"game started",
@@ -134,8 +180,22 @@ wss.on("connection",(socket)=>{
                     }))
                 }
             }
-            //set a cron for the turns 
+            
+            roomData.get(roomId).state="submissions";
+            userInputs.clear(); // Clear any old inputs for this room
 
+            for(const i of users){
+                const sock=uidSocket.get(i);
+                sock.send(JSON.stringify({
+                    event:"input your answer"
+                }))
+            }
+            
+            // set a timeout for the submission phase here
+
+        }
+        if(payload.type=="INPUT_SUBMIT"){
+          //
         }
     }  
         catch(e){
@@ -153,4 +213,3 @@ wss.on("connection",(socket)=>{
 
     })
 })
-
