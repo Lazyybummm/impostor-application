@@ -68,7 +68,42 @@ function votingPhase(roomId){
 
 
 function resultsPhase(roomId){
-    
+    let voteCounts=new Map();
+    const currentvotes=votes.get(roomId);
+    for(const [userId,targetId] of currentvotes)
+    {
+        const current =voteCounts.get(targetId)// if vote already exists then increment the counter
+        if(current){
+            voteCounts.set(targetId,current+1);
+        }
+        else{
+            voteCounts.set(targetId,1);
+        }
+    }
+    let max=0;
+    let mostVoted;
+    for(const [targetId,count] of voteCounts){
+        if(count>max){//find the one with max count
+            max=count;
+            mostVoted=targetId
+        }
+    }
+
+    if(mostVoted==roomData.get(roomId).impostorId){
+        //impostor guess
+    }
+    else{
+        const impostorUsername=uidUsername.get(roomData.get(roomId).impostorId);
+        roomData.get(roomId).state="end";
+        const participants=rooms.get(roomId);
+        for(const i of participants){
+            const sock=uidSocket.get(i);
+            sock.send(JSON.stringify({
+                event:"impostor won",
+                impostorUsername:impostorUsername
+            }))
+        }
+    }
    //this is what will run after everyone has voted 
 
 }
