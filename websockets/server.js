@@ -2,7 +2,6 @@ import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
 import http from "http";
 
-/
 const server = http.createServer((req, res) => {
     if (req.url === '/ping') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
