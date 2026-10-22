@@ -64,7 +64,7 @@ function votingPhase(roomId){
 
     roomData.get(roomId).votingTimer=setTimeout(() => {
         resultsPhase(roomId);
-    }, 45000);
+    }, 60000);
     
 }
 
@@ -271,6 +271,7 @@ wss.on("connection",(socket)=>{
                     sock.send(JSON.stringify({
                         event:"game started",
                         role:"impostor"
+                        //send the category to the impostor so they are not completely blind , roomdata.category
                     }))
                 }
                 else{
@@ -290,7 +291,7 @@ wss.on("connection",(socket)=>{
             // set a timeout for the submission phase here
             roomData.get(roomId).inputTimer = setTimeout(() => {
                 votingPhase(roomId);
-            }, 20000);
+            }, 60000);
         }
         if(payload.type=="INPUT_SUBMIT"){
             const roomId = payload.roomId;
@@ -298,6 +299,18 @@ wss.on("connection",(socket)=>{
             const input = payload.input;
 
             userInputs.set(userId, input);
+            const participants=rooms.get(roomId);
+            for(const p of participants){
+                if(userId==p){
+                    continue;
+                }
+                const sock=uidSocket.get(p);
+                sock.send(JSON.stringify({
+                    event:"someone's input",
+                    input:input,
+                    userName:uidUsername.get(userId)
+                }))
+            }
 
             if(userInputs.size == rooms.get(roomId).size){
                 clearTimeout(roomData.get(roomId).inputTimer);

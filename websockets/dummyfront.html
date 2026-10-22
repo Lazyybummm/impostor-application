@@ -150,8 +150,7 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
 <script>
 /* ---- Settings: keep the timers in sync with your server ---- */
 const SUBMIT=20, VOTE=45, GUESS=20;                       // seconds
-const SERVER=new URLSearchParams(location.search).get('server')||
-  `${location.protocol==='https:'?'wss':'ws'}://${location.hostname||'localhost'}:8080`;
+const SERVER='wss://runner-aspect-clothes.ngrok-free.dev';
 /* ------------------------------------------------------------ */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
