@@ -2,7 +2,7 @@ import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
 import http from "http";
 
-// 1. Create HTTP Server for the cron ping
+/
 const server = http.createServer((req, res) => {
     if (req.url === '/ping') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -13,7 +13,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-// 2. Attach WebSocket Server
+
 const PORT = process.env.PORT || 8080;
 const wss = new WebSocketServer({ server });
 
@@ -24,7 +24,7 @@ let uidUsername=new Map();
 let votes=new Map();
 let userInputs=new Map();
 
-// Organized by Categories
+
 const wordPacks = {
     "Food": ["apple", "orange", "lemon", "yogurt", "castle", "desert"],
     "Places": ["bridge", "forest", "island", "garden", "tunnel", "valley", "castle", "desert"],
@@ -186,6 +186,92 @@ function resultsPhase(roomId){
 }
 
 wss.on("connection",(socket)=>{
+
+
+    socket.on("close",()=>{
+        const userId=socket.clientId;
+        const roomId=socket.roomId;
+
+        // If they never joined a room, nothing to clean up
+        if(!userId || !roomId) return;
+
+        const userName=uidUsername.get(userId);
+        const participants=rooms.get(roomId);
+        const room = roomData.get(roomId);
+
+        if(!participants || !room) return;
+
+        // Remove socket mapping immediately since connection is dead
+        uidSocket.delete(userId);
+
+        const isMidGame = room.state !== "created";
+
+        if (!isMidGame) {
+            // LOBBY STATE: Wipe them out completely
+            participants.delete(userId);
+            room.livePlayers--;
+
+            if (participants.size === 0) {
+                // Room is empty, wipe everything
+                if (room.inputTimer) clearTimeout(room.inputTimer);
+                if (room.votingTimer) clearTimeout(room.votingTimer);
+                if (room.guessTimer) clearTimeout(room.guessTimer);
+                rooms.delete(roomId);
+                roomData.delete(roomId);
+                votes.delete(roomId);
+                uidUsername.delete(userId);
+                userInputs.delete(userId);
+                return;
+            }
+
+            // Transfer host if host left
+            if (room.hostId === userId) {
+                room.hostId = participants.values().next().value;
+            }
+
+            uidUsername.delete(userId);
+            userInputs.delete(userId);
+
+        } else {
+            // MID-GAME STATE: Keep them in the room data for consistency, but handle edge cases
+            
+            // If Impostor leaves during the guess phase, Crew instantly wins
+            if (userId === room.impostorId && room.state === "impostor-guess") {
+                if (room.guessTimer) clearTimeout(room.guessTimer);
+                room.winner = "crew";
+                room.state = "round-end";
+                // Notify others (reusing guessPhase logic by passing a fake winner)
+                guessPhase("crew", userId, roomId);
+                return;
+            }
+
+            // Speed up the phase if the remaining players are done
+            if (room.state === "submissions") {
+                if (userInputs.size === participants.size - 1) {
+                    clearTimeout(room.inputTimer);
+                    votingPhase(roomId);
+                }
+            } else if (room.state === "voting") {
+                if (votes.get(roomId) && votes.get(roomId).size === participants.size - 1) {
+                    clearTimeout(room.votingTimer);
+                    resultsPhase(roomId);
+                }
+            }
+        }
+
+        // Notify remaining players
+        for(const p of participants){
+            if (p === userId) continue;
+            const sock=uidSocket.get(p);
+            if(sock && sock.readyState === 1) {
+                sock.send(JSON.stringify({
+                    event:"teammate disconnect",
+                    userName:userName
+                }))
+            }
+        }
+    });
+
     socket.on("message",(message)=>{
         try{
         const msg=JSON.parse(message);
@@ -193,9 +279,11 @@ wss.on("connection",(socket)=>{
         if(payload.type=='JOIN_ROOM'){
             const uid=nanoid();
             uidSocket.set(uid,socket);
-            socket.clientId=uid;//setting a unique indetifier for this particular user
-            uidUsername.set(uid,payload.userName);
             const roomId=payload.roomId;
+            socket.clientId=uid;
+            socket.roomId=roomId;
+            //setting a unique indetifier for this particular user
+            uidUsername.set(uid,payload.userName);
             if(rooms.get(roomId)){
                 rooms.get(roomId).add(uid)
                 roomData.get(roomId).livePlayers++;
@@ -241,9 +329,34 @@ wss.on("connection",(socket)=>{
             const uid=socket.clientId;
             const roomId=payload.roomId;
             const userName=uidUsername.get(uid);
-            rooms.get(roomId).delete(uid);
+            
+            const participants = rooms.get(roomId);
+            const room = roomData.get(roomId);
+            if(!participants || !room) return;
+
+            participants.delete(uid);
+            room.livePlayers--;
+            uidSocket.delete(uid);
+            uidUsername.delete(uid);
+            userInputs.delete(uid);
+
+            // If last person leaves, wipe room
+            if (participants.size === 0) {
+                if (room.inputTimer) clearTimeout(room.inputTimer);
+                if (room.votingTimer) clearTimeout(room.votingTimer);
+                if (room.guessTimer) clearTimeout(room.guessTimer);
+                rooms.delete(roomId);
+                roomData.delete(roomId);
+                votes.delete(roomId);
+                return;
+            }
+
+            //transfer host 
+            if (room.hostId === uid) {
+                room.hostId = participants.values().next().value;
+            }
+
             //notify the users and the participants too 
-            const participants=rooms.get(roomId);//get the remaining users uid
             for(const user of participants){
                 const sock=uidSocket.get(user);
                 if(sock && sock.readyState === 1) {
@@ -253,7 +366,6 @@ wss.on("connection",(socket)=>{
                     }))
                 }
             }
-            roomData.get(roomId).livePlayers--;
         }
 
         if(payload.type=='START_ROOM'){
@@ -300,7 +412,7 @@ wss.on("connection",(socket)=>{
                     sock.send(JSON.stringify({
                         event:"game started",
                         role:"impostor",
-                        category: selectedCategory // <-- Sent to impostor
+                        category: selectedCategory // Sent to impostor
                     }))
                 }
                 else{
@@ -313,7 +425,7 @@ wss.on("connection",(socket)=>{
             }
             
             roomData.get(roomId).state="submissions";
-            userInputs.clear(); // Clear any old inputs for this room
+            userInputs.clear(); //clear inputs
 
            
             
