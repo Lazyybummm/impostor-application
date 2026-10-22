@@ -1,27 +1,36 @@
 import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
+import http from "http";
 
-const wss=new WebSocketServer({port:"8080"});
+// 1. Create HTTP Server for the cron ping
+const server = http.createServer((req, res) => {
+    if (req.url === '/ping') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Server is awake!');
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
+});
+
+// 2. Attach WebSocket Server
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocketServer({ server });
+
 let rooms=new Map();
 let roomData=new Map();
 let uidSocket=new Map();
 let uidUsername=new Map();
 let votes=new Map();
-let userInputs=new Map();//the guesses each user is gonna make in the round ->uid and a set of user inputs 
-const words = [
-    "apple", "bridge", "candle", "dolphin", "engine",
-    "forest", "guitar", "hammer", "island", "jacket",
-    "kettle", "ladder", "magnet", "needle", "orange",
-    "pencil", "quartz", "rocket", "saddle", "tiger",
-    "umbrella", "violet", "wagon", "yogurt", "zebra",
-    "anchor", "basket", "cactus", "dragon", "feather",
-    "garden", "helmet", "insect", "jungle", "kitten",
-    "lemon", "mirror", "napkin", "ocean", "parrot",
-    "rabbit", "silver", "tunnel", "valley", "window",
-    "yellow", "zipper", "bottle", "castle", "desert"
-  ];
-//no need to store the role as i can match up using the roomdata , whether they are the impostor or not 
+let userInputs=new Map();
 
+// Organized by Categories
+const wordPacks = {
+    "Food": ["apple", "orange", "lemon", "yogurt", "castle", "desert"],
+    "Places": ["bridge", "forest", "island", "garden", "tunnel", "valley", "castle", "desert"],
+    "Animals": ["dolphin", "tiger", "zebra", "kitten", "parrot", "rabbit", "insect"],
+    "Objects": ["candle", "engine", "guitar", "hammer", "jacket", "kettle", "ladder", "magnet", "needle", "pencil", "quartz", "rocket", "saddle", "umbrella", "wagon", "anchor", "basket", "cactus", "feather", "helmet", "mirror", "napkin", "silver", "window", "yellow", "zipper", "bottle"]
+};
 
 //need to be some metadata about the room here too , should be maintained 
 function getParticipants(roomId){
@@ -56,10 +65,12 @@ function votingPhase(roomId){
 
     for (const i of participants) {
         const sock = uidSocket.get(i);
-        sock.send(JSON.stringify({
-            event: "voting started",
-            answers: answers
-        }));
+        if(sock && sock.readyState === 1) {
+            sock.send(JSON.stringify({
+                event: "voting started",
+                answers: answers
+            }));
+        }
     }
 
     roomData.get(roomId).votingTimer=setTimeout(() => {
@@ -76,6 +87,8 @@ function guessPhase(winner,userId,roomId)
     const impostorUsername=uidUsername.get(userId);
     for(const i of participants){
         const sock=uidSocket.get(i);
+        if(!sock || sock.readyState !== 1) continue;
+        
         if(winner=='impostor'){
             if(userId==i){
                 sock.send(JSON.stringify({
@@ -99,10 +112,7 @@ function guessPhase(winner,userId,roomId)
             }))
 
         }
-
-
     }
-    
 }
     //should handle the win-lose outcome and distribution 
 
@@ -134,6 +144,8 @@ function resultsPhase(roomId){
         roomData.get(roomId).state="impostor-guess"
         for(const [userId,targetId] of currentvotes){
             const sock=uidSocket.get(userId);
+            if(!sock || sock.readyState !== 1) continue;
+
             if(userId==mostVoted){
                 sock.send(JSON.stringify({
                     event:"make a guess to win the game"
@@ -160,10 +172,13 @@ function resultsPhase(roomId){
         const participants=rooms.get(roomId);
         for(const i of participants){
             const sock=uidSocket.get(i);
-            sock.send(JSON.stringify({
-                event:"impostor won",
-                impostorUsername:impostorUsername
-            }))
+            if(sock && sock.readyState === 1) {
+                sock.send(JSON.stringify({
+                    event:"impostor won",
+                    impostorUsername:impostorUsername,
+                    secretWord: roomData.get(roomId).selectedWord // <-- Added secretWord here for the reveal screen
+                }))
+            }
         }
     }
    //this is what will run after everyone has voted 
@@ -230,11 +245,13 @@ wss.on("connection",(socket)=>{
             //notify the users and the participants too 
             const participants=rooms.get(roomId);//get the remaining users uid
             for(const user of participants){
-                const sock=uidSocket.get(user);;
-                sock.send(JSON.stringify({
-                    event:"teammate disconnect",
-                    userName:userName
-                }))
+                const sock=uidSocket.get(user);
+                if(sock && sock.readyState === 1) {
+                    sock.send(JSON.stringify({
+                        event:"teammate disconnect",
+                        userName:userName
+                    }))
+                }
             }
             roomData.get(roomId).livePlayers--;
         }
@@ -256,22 +273,34 @@ wss.on("connection",(socket)=>{
 
                 return;
             }
-            let randomNum=Math.floor(Math.random()*words.length)
-            const selectedWord=words[randomNum];
-            roomData.get(roomId).selectedWord=selectedWord;
+            
+            // Get categories and pick a random one
+            const categories = Object.keys(wordPacks);
+            const randomCatIndex = Math.floor(Math.random() * categories.length);
+            const selectedCategory = categories[randomCatIndex];
+            
+            // Get a random word from the selected category
+            const wordsInCat = wordPacks[selectedCategory];
+            const randomWordIndex = Math.floor(Math.random() * wordsInCat.length);
+            const selectedWord = wordsInCat[randomWordIndex];
+            
+            roomData.get(roomId).selectedWord = selectedWord;
+            roomData.get(roomId).category = selectedCategory;
+
             let temp=[...rooms.get(roomId)];
-            randomNum=Math.floor(Math.random()*temp.length);
+            let randomNum=Math.floor(Math.random()*temp.length);
             const impId=temp[randomNum];
             roomData.get(roomId).impostorId=impId;
             const users=rooms.get(roomId);
+            
              //now after choosing the word and the impostor , time to deliver it to the respective users 
             for(const i of users){
                 const sock=uidSocket.get(i);
                 if(i==roomData.get(roomId).impostorId){
                     sock.send(JSON.stringify({
                         event:"game started",
-                        role:"impostor"
-                        //send the category to the impostor so they are not completely blind , roomdata.category
+                        role:"impostor",
+                        category: selectedCategory // <-- Sent to impostor
                     }))
                 }
                 else{
@@ -305,11 +334,13 @@ wss.on("connection",(socket)=>{
                     continue;
                 }
                 const sock=uidSocket.get(p);
-                sock.send(JSON.stringify({
-                    event:"someone's input",
-                    input:input,
-                    userName:uidUsername.get(userId)
-                }))
+                if(sock && sock.readyState === 1) {
+                    sock.send(JSON.stringify({
+                        event:"someone's input",
+                        input:input,
+                        userName:uidUsername.get(userId)
+                    }))
+                }
             }
 
             if(userInputs.size == rooms.get(roomId).size){
@@ -383,6 +414,7 @@ wss.on("connection",(socket)=>{
             delete roomData.get(roomId).impostorId;
             delete roomData.get(roomId).winner;
             delete roomData.get(roomId).answers;
+            delete roomData.get(roomId).category;
             votes.delete(roomId);
             userInputs.clear();
             //need to notify everyone that new room has started
@@ -390,10 +422,12 @@ wss.on("connection",(socket)=>{
             const participants=rooms.get(roomId);
             for(const p of participants){
                 const sock=uidSocket.get(p);
-                sock.send(JSON.stringify({
-                    event:"back to lobby",
-                    participants:getParticipants(roomId)
-                }))
+                if(sock && sock.readyState === 1) {
+                    sock.send(JSON.stringify({
+                        event:"back to lobby",
+                        participants:getParticipants(roomId)
+                    }))
+                }
             }
         }
     }  
@@ -403,12 +437,10 @@ wss.on("connection",(socket)=>{
                 error:e.message
             }))
         }
-           
-
-            //not handling room joining after leaving as of now 
-
-
-        
-
     })
 })
+
+// 3. Start the combined server
+server.listen(PORT, () => {
+    console.log(`HTTP and WebSocket server running on port ${PORT}`);
+});
