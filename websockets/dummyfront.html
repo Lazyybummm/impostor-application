@@ -78,6 +78,7 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
  main{flex:1;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:22px 18px 14px;box-shadow:0 -12px 30px -22px rgba(20,25,40,.45)}}
 @media (max-width:380px){.reveal{grid-template-columns:1fr}.steps{gap:.8rem;font-size:.64rem}}
 @media (max-height:480px) and (orientation:landscape){.role{height:112px}.code{font-size:2rem}h1{font-size:1.45rem}.lead{margin-bottom:.8rem}}
+.players em{font:italic 500 1.05rem var(--serif)}#feed li{animation:in .4s cubic-bezier(.2,.8,.2,1) both}#feedwrap{margin-bottom:.4rem}
 </style>
 </head>
 <body>
@@ -113,27 +114,29 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
    <div class="face back" id="rback"></div></div></button>
   <span class="lbl">Your one-word hint</span>
   <input id="hint" maxlength="24" autocomplete="off" placeholder="Prove you know it, without giving it away">
-  <div class="stack"><button class="btn" id="sendHint">Lock in hint</button></div>
   <p class="status" id="hstat" aria-live="polite"></p>
+  <div id="feedwrap" hidden><span class="lbl">On the table</span><ul class="players" id="feed"></ul></div>
+  <div class="stack"><button class="btn" id="sendHint">Lock in hint</button></div>
  </section>
 
  <section class="screen" id="vote" hidden>
   <h1>Who is bluffing?</h1><p class="lead">Read the clues. Pick the player who seems to be guessing.</p>
   <div class="players" id="vlist" style="display:grid;gap:8px"></div>
-  <div class="stack"><button class="btn" id="cast" disabled>Cast vote</button></div>
   <p class="status" id="vstat" aria-live="polite"></p>
+  <div class="stack"><button class="btn" id="cast" disabled>Cast vote</button></div>
  </section>
 
  <section class="screen" id="guess" hidden>
   <span class="eyebrow">You were caught</span><h1>One last chance.</h1>
   <p class="lead">Guess the secret word to steal the win from the crew.</p>
   <input id="gword" maxlength="30" autocomplete="off" placeholder="The secret word is…">
-  <div class="stack"><button class="btn" id="sendG">Submit guess</button></div>
   <p class="status" id="gstat" aria-live="polite"></p>
+  <div class="stack"><button class="btn" id="sendG">Submit guess</button></div>
  </section>
 
  <section class="screen" id="wait" hidden>
   <div class="center"><h1 id="wt"></h1><p class="lead" id="wx"></p><div class="dots"><i></i><i></i><i></i></div></div>
+  <div class="stack"><button class="btn link" id="leave3">Leave room</button></div>
  </section>
 
  <section class="screen" id="result" hidden>
@@ -149,19 +152,19 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
 
 <script>
 /* ---- Settings: keep the timers in sync with your server ---- */
-const SUBMIT=20, VOTE=45, GUESS=20;                       // seconds
-const SERVER='wss://runner-aspect-clothes.ngrok-free.dev';
+const SUBMIT=60, VOTE=60, GUESS=20;                       // seconds, same as the server timers
+const SERVER=new URLSearchParams(location.search).get('server')||'wss://impostor-application-1.onrender.com';
 /* ------------------------------------------------------------ */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let ws,pending=null,players=[],answers=[],picked=null,voted=false,hintSent=false,lastGuess='',clockT,toastT;
-let me={name:'',room:'',host:false,uid:null,role:null,word:null};
+let me={name:'',room:'',host:false,uid:null,role:null,word:null,cat:null};
 
 const hue=n=>{let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%360;return h};
 const av=n=>`<span class="av" style="background:hsl(${hue(n)} 36% 44%)">${esc(n[0]||'?').toUpperCase()}</span>`;
 const isMe=(uid,name)=>me.uid?uid===me.uid:name===me.name;
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),2800)}
-function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));else toast('Not connected to the server.')}
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));else toast('Not connected yet. The server may be waking up, so try again in a few seconds.')}
 
 const STEP={round:0,vote:1,guess:2,wait:2,result:2};
 function show(n){document.querySelectorAll('.screen').forEach(s=>s.hidden=s.id!==n);
@@ -175,9 +178,14 @@ function startClock(sec,onEnd){clearInterval(clockT);const c=$('#clock'),b=$('#b
 function wait(t,x,sec){$('#wt').textContent=t;$('#wx').textContent=x;show('wait');if(sec)startClock(sec);else stopClock()}
 
 /* ---- connection ---- */
-function pill(on){$('#pill').classList.toggle('on',on);$('#pt').textContent=on?'Connected':'Offline'}
-function connect(){ws=new WebSocket(SERVER);ws.onopen=()=>pill(true);ws.onmessage=onMsg;ws.onerror=()=>ws.close();
- ws.onclose=()=>{pill(false);if(me.room){reset();toast('Connection lost. Please rejoin.')}setTimeout(connect,2000)}}
+function pill(on,t){$('#pill').classList.toggle('on',on);$('#pt').textContent=t||(on?'Connected':'Offline')}
+let tries=0,wake;
+function connect(){pill(false,tries++>0?'Waking server…':'Connecting');clearTimeout(wake);
+ wake=setTimeout(()=>{if(ws.readyState!==1)pill(false,'Waking server…')},4000);
+ try{fetch(SERVER.replace(/^ws/,'http')+'/ping',{mode:'no-cors'}).catch(()=>{})}catch{}
+ ws=new WebSocket(SERVER);ws.onopen=()=>{tries=0;clearTimeout(wake);pill(true)};ws.onmessage=onMsg;ws.onerror=()=>ws.close();
+ ws.onclose=()=>{clearTimeout(wake);pill(false,'Reconnecting');if(me.room){reset();toast('Connection lost. Please rejoin.')}setTimeout(connect,2000)}}
+setInterval(()=>{if(ws&&ws.readyState===1)ws.send('{"type":"PING"}')},25000);   // keeps idle sockets open
 function reset(){me.room='';me.host=false;me.uid=null;me.role=null;me.word=null;players=[];pending=null;show('home')}
 
 /* ---- incoming messages (matches the server's event names) ---- */
@@ -187,10 +195,11 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
  if(m.status==='success'&&pending)return joined(m);
  const ev=String(m.event||'').trim().toLowerCase(),is=s=>ev.startsWith(s);
  if(is('game started'))startRound(m);
+ else if(is('someone'))addFeed(m.userName,m.input);
  else if(is('voting started'))startVote(m);
  else if(is('make a guess'))startGuess();
  else if(is('impostor caught'))wait('Impostor caught','They now get one chance to guess the word and steal the win.',GUESS);
- else if(is('impostor won'))result('impostor',m.impostorUsername,'The crew voted for the wrong person.');
+ else if(is('impostor won'))result('impostor',m.impostorUsername,'The crew voted for the wrong person.',m.secretWord);
  else if(is('crew loses'))result('impostor',m.impostorUsername,'The impostor guessed the secret word.');
  else if(is('crew wins'))result('crew',m.impostorUsername,'The impostor guessed wrong.');
  else if(is('teammate disconnect')){const i=players.indexOf(m.userName);if(i>-1)players.splice(i,1);renderLobby();toast(`${m.userName} left the room.`)}
@@ -208,6 +217,7 @@ const code=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random(
 function go(create){const name=$('#name').value.trim(),room=create?code():$('#room').value.trim().toUpperCase();
  if(!name)return toast('Enter your name first.');if(!room)return toast('Enter a room code, or create a new room.');
  try{localStorage.setItem('imp-name',name)}catch{}
+ if(!ws||ws.readyState!==1)return toast('Not connected yet. The server may be waking up, so try again in a few seconds.');
  pending={name,room,create};send({type:'JOIN_ROOM',userName:name,roomId:room})}
 function joined(m){me.name=pending.name;me.room=pending.room;
  const others=[...(m.participants||[])],i=others.indexOf(me.name);if(i>-1)others.splice(i,1);
@@ -220,17 +230,20 @@ function renderLobby(){$('#lcode').textContent=me.room;$('#lcount').textContent=
 function leave(){send({type:'EXIT_ROOM',roomId:me.room});reset()}
 
 /* ---- round ---- */
-function startRound(m){me.role=m.role;me.word=m.secretWord||null;hintSent=false;voted=false;lastGuess='';
+function startRound(m){me.role=m.role;me.word=m.secretWord||null;me.cat=m.category||null;hintSent=false;voted=false;lastGuess='';
  const imp=me.role==='impostor',b=$('#rback');b.className='face back'+(imp?' imp':'');
- b.innerHTML=imp?'<small>Your role</small><strong>Impostor</strong><small>You do not know the word. Blend in.</small>'
+ b.innerHTML=imp?`<small>Your role</small><strong>Impostor</strong><small>${me.cat?'The category is '+esc(me.cat)+'. Blend in.':'You do not know the word. Blend in.'}</small>`
   :`<small>The secret word</small><strong>${esc(me.word||'')}</strong>`;
- $('#role').classList.remove('flip');$('#hint').value='';$('#hint').disabled=false;$('#sendHint').hidden=false;$('#hstat').textContent='';
+ $('#role').classList.remove('flip');$('#feed').innerHTML='';$('#feedwrap').hidden=true;$('#hint').value='';$('#hint').disabled=false;$('#sendHint').hidden=false;$('#hstat').textContent='';
  show('round');startClock(SUBMIT,()=>{if(!hintSent)lock('Time is up. Waiting for the vote…')})}
 function lock(t){$('#hint').disabled=true;$('#sendHint').hidden=true;$('#hstat').textContent=t}
 function sendHint(){if(hintSent)return;const v=$('#hint').value.trim();
  if(!v)return toast('Type a one-word hint.');if(/\s/.test(v))return toast('One word only.');
  if(me.word&&v.toLowerCase()===me.word.toLowerCase())return toast('Do not use the secret word itself.');
- send({type:'INPUT_SUBMIT',roomId:me.room,input:v});hintSent=true;lock(`Hint locked in: “${v}”. Waiting for the others…`)}
+ send({type:'INPUT_SUBMIT',roomId:me.room,input:v});hintSent=true;addFeed(me.name,v,true);lock(`Hint locked in: “${v}”. Waiting for the others…`)}
+
+function addFeed(n,t,self){$('#feedwrap').hidden=false;
+ $('#feed').insertAdjacentHTML('beforeend',`<li>${av(n)}<span><b>${esc(n)}</b> · <em>${esc(t)}</em></span>${self?'<span class="tag">You</span>':''}</li>`)}
 
 /* ---- vote ---- */
 function startVote(m){answers=m.answers||[];picked=null;voted=false;$('#vstat').textContent='';$('#cast').hidden=false;$('#cast').disabled=true;
@@ -248,7 +261,7 @@ function startGuess(){$('#gword').value='';$('#gword').disabled=false;$('#sendG'
  show('guess');startClock(GUESS,()=>wait('Time is up','Waiting for the verdict.'))}
 function sendGuess(){const v=$('#gword').value.trim();if(!v)return toast('Type your guess.');lastGuess=v;
  send({type:'IMPOSTOR_GUESS',roomId:me.room,inputWord:v});$('#gword').disabled=true;$('#sendG').hidden=true;$('#gstat').textContent='Guess sent. Waiting for the verdict…'}
-function result(win,imp,why){const crew=win==='crew',imps=me.role==='impostor';
+function result(win,imp,why,word){const crew=win==='crew',imps=me.role==='impostor';if(word)me.word=word;
  if(win==='impostor'&&imps&&lastGuess&&!me.word)me.word=lastGuess;
  const badge=$('#rbadge');badge.textContent=me.role?((imps!==crew)?'Victory':'Defeat'):'Round over';badge.style.color=me.role&&(imps!==crew)?'var(--good)':'var(--accent)';
  $('#rtitle').textContent=crew?'The crew wins.':'The impostor wins.';$('#rreason').textContent=why;
@@ -260,7 +273,7 @@ function result(win,imp,why){const crew=win==='crew',imps=me.role==='impostor';
 /* ---- wiring ---- */
 $('#join').onclick=()=>go(false);$('#create').onclick=()=>go(true);
 $('#start').onclick=()=>send({type:'START_ROOM',roomId:me.room});$('#again').onclick=()=>send({type:'PLAY_AGAIN',roomId:me.room});
-$('#leave1').onclick=$('#leave2').onclick=leave;
+$('#leave1').onclick=$('#leave2').onclick=$('#leave3').onclick=leave;
 $('#copy').onclick=async()=>{const u=`${location.href.split('#')[0].split('?')[0]}?room=${me.room}`;
  try{await navigator.clipboard.writeText(u);toast('Invite link copied.')}catch{prompt('Copy this invite link:',u)}};
 $('#role').onclick=()=>$('#role').classList.toggle('flip');

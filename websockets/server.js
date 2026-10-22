@@ -328,20 +328,6 @@ wss.on("connection",(socket)=>{
             const input = payload.input;
 
             userInputs.set(userId, input);
-            const participants=rooms.get(roomId);
-            for(const p of participants){
-                if(userId==p){
-                    continue;
-                }
-                const sock=uidSocket.get(p);
-                if(sock && sock.readyState === 1) {
-                    sock.send(JSON.stringify({
-                        event:"someone's input",
-                        input:input,
-                        userName:uidUsername.get(userId)
-                    }))
-                }
-            }
 
             if(userInputs.size == rooms.get(roomId).size){
                 clearTimeout(roomData.get(roomId).inputTimer);
