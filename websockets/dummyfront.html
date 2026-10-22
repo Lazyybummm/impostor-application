@@ -78,7 +78,7 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
  main{flex:1;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:22px 18px 14px;box-shadow:0 -12px 30px -22px rgba(20,25,40,.45)}}
 @media (max-width:380px){.reveal{grid-template-columns:1fr}.steps{gap:.8rem;font-size:.64rem}}
 @media (max-height:480px) and (orientation:landscape){.role{height:112px}.code{font-size:2rem}h1{font-size:1.45rem}.lead{margin-bottom:.8rem}}
-.players em{font:italic 500 1.05rem var(--serif)}#feed li{animation:in .4s cubic-bezier(.2,.8,.2,1) both}#feedwrap{margin-bottom:.4rem}
+.players em{font:italic 500 1.05rem var(--serif)}
 </style>
 </head>
 <body>
@@ -115,7 +115,6 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
   <span class="lbl">Your one-word hint</span>
   <input id="hint" maxlength="24" autocomplete="off" placeholder="Prove you know it, without giving it away">
   <p class="status" id="hstat" aria-live="polite"></p>
-  <div id="feedwrap" hidden><span class="lbl">On the table</span><ul class="players" id="feed"></ul></div>
   <div class="stack"><button class="btn" id="sendHint">Lock in hint</button></div>
  </section>
 
@@ -195,7 +194,6 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
  if(m.status==='success'&&pending)return joined(m);
  const ev=String(m.event||'').trim().toLowerCase(),is=s=>ev.startsWith(s);
  if(is('game started'))startRound(m);
- else if(is('someone'))addFeed(m.userName,m.input);
  else if(is('voting started'))startVote(m);
  else if(is('make a guess'))startGuess();
  else if(is('impostor caught'))wait('Impostor caught','They now get one chance to guess the word and steal the win.',GUESS);
@@ -234,16 +232,13 @@ function startRound(m){me.role=m.role;me.word=m.secretWord||null;me.cat=m.catego
  const imp=me.role==='impostor',b=$('#rback');b.className='face back'+(imp?' imp':'');
  b.innerHTML=imp?`<small>Your role</small><strong>Impostor</strong><small>${me.cat?'The category is '+esc(me.cat)+'. Blend in.':'You do not know the word. Blend in.'}</small>`
   :`<small>The secret word</small><strong>${esc(me.word||'')}</strong>`;
- $('#role').classList.remove('flip');$('#feed').innerHTML='';$('#feedwrap').hidden=true;$('#hint').value='';$('#hint').disabled=false;$('#sendHint').hidden=false;$('#hstat').textContent='';
+ $('#role').classList.remove('flip');$('#hint').value='';$('#hint').disabled=false;$('#sendHint').hidden=false;$('#hstat').textContent='';
  show('round');startClock(SUBMIT,()=>{if(!hintSent)lock('Time is up. Waiting for the vote…')})}
 function lock(t){$('#hint').disabled=true;$('#sendHint').hidden=true;$('#hstat').textContent=t}
 function sendHint(){if(hintSent)return;const v=$('#hint').value.trim();
  if(!v)return toast('Type a one-word hint.');if(/\s/.test(v))return toast('One word only.');
  if(me.word&&v.toLowerCase()===me.word.toLowerCase())return toast('Do not use the secret word itself.');
- send({type:'INPUT_SUBMIT',roomId:me.room,input:v});hintSent=true;addFeed(me.name,v,true);lock(`Hint locked in: “${v}”. Waiting for the others…`)}
-
-function addFeed(n,t,self){$('#feedwrap').hidden=false;
- $('#feed').insertAdjacentHTML('beforeend',`<li>${av(n)}<span><b>${esc(n)}</b> · <em>${esc(t)}</em></span>${self?'<span class="tag">You</span>':''}</li>`)}
+ send({type:'INPUT_SUBMIT',roomId:me.room,input:v});hintSent=true;lock(`Hint locked in: “${v}”. Waiting for the others…`)}
 
 /* ---- vote ---- */
 function startVote(m){answers=m.answers||[];picked=null;voted=false;$('#vstat').textContent='';$('#cast').hidden=false;$('#cast').disabled=true;
