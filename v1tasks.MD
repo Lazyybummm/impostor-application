@@ -9,3 +9,13 @@ Packs: about 6 built-in packs of 40-60 words each, such as Food, Places, Cricket
 Results screen: the impostor, the word, all hints, vote counts, a simple score, and a “play again” button.
 
 Resilience: a player who refreshes can rejoin as themselves (keep a token in the browser). If the host leaves, host passes to someone else. Anyone joining mid-round waits for the next one. Empty rooms are deleted after a while.
+
+
+
+sample room metadata struct:
+{
+    livePlayers:count,
+    state:('lobby,started,),
+    chosenWord:could be null 
+
+}
