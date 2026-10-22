@@ -156,8 +156,9 @@ const SERVER=new URLSearchParams(location.search).get('server')||'wss://impostor
 /* ------------------------------------------------------------ */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gone=new Set();   // players who disconnected mid-round
 let ws,pending=null,players=[],answers=[],picked=null,voted=false,hintSent=false,lastGuess='',clockT,toastT;
-let me={name:'',room:'',host:false,uid:null,role:null,word:null,cat:null};
+let me={name:'',room:'',host:false,uid:null,role:null,word:null,cat:null,hostName:null,hostGone:false};
 
 const hue=n=>{let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%360;return h};
 const av=n=>`<span class="av" style="background:hsl(${hue(n)} 36% 44%)">${esc(n[0]||'?').toUpperCase()}</span>`;
@@ -185,7 +186,7 @@ function connect(){pill(false,tries++>0?'Waking server…':'Connecting');clearTi
  ws=new WebSocket(SERVER);ws.onopen=()=>{tries=0;clearTimeout(wake);pill(true)};ws.onmessage=onMsg;ws.onerror=()=>ws.close();
  ws.onclose=()=>{clearTimeout(wake);pill(false,'Reconnecting');if(me.room){reset();toast('Connection lost. Please rejoin.')}setTimeout(connect,2000)}}
 setInterval(()=>{if(ws&&ws.readyState===1)ws.send('{"type":"PING"}')},25000);   // keeps idle sockets open
-function reset(){me.room='';me.host=false;me.uid=null;me.role=null;me.word=null;players=[];pending=null;show('home')}
+function reset(){me.room='';me.host=false;me.uid=null;me.role=null;me.word=null;players=[];pending=null;me.hostName=null;me.hostGone=false;gone.clear();show('home')}
 
 /* ---- incoming messages (matches the server's event names) ---- */
 function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
@@ -200,9 +201,9 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
  else if(is('impostor won'))result('impostor',m.impostorUsername,'The crew voted for the wrong person.',m.secretWord);
  else if(is('crew loses'))result('impostor',m.impostorUsername,'The impostor guessed the secret word.');
  else if(is('crew wins'))result('crew',m.impostorUsername,'The impostor guessed wrong.');
- else if(is('teammate disconnect')){const i=players.indexOf(m.userName);if(i>-1)players.splice(i,1);renderLobby();toast(`${m.userName} left the room.`)}
+ else if(is('teammate disconnect'))left(m);
  else if(is('new player joined')){players.push(m.userName);renderLobby();toast(`${m.userName} joined.`)}
- else if(is('back to lobby')){players=m.participants||players;stopClock();me.role=null;me.word=null;answers=[];renderLobby();show('lobby')}
+ else if(is('back to lobby')){players=(m.participants||players).filter(n=>!gone.has(n));gone.clear();if(m.hostName)setHost(m.hostName);stopClock();me.role=null;me.word=null;answers=[];renderLobby();show('lobby')}
  else if(is('only host'))toast('Only the host can do that.');
  else if(is('room not found')||is('room already exists')){pending=null;toast(is('room not found')?'No room with that code. Check it, or create a new room.':'That room code is already taken. Try another.')}
  else if(is('not enough'))toast('At least 3 players are needed to start.');
@@ -210,6 +211,16 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
  else if(is('only impostor'))toast('Only the impostor can make a guess.');
  else if(is('error')){if(pending){pending=null;toast('Could not join that room. Please try again.')}else toast(m.error||'Something went wrong.')}
 }
+
+function setHost(n){me.hostName=n;me.hostGone=false;const was=me.host;me.host=n===me.name;if(me.host&&!was)toast('You are now the host.');renderLobby()}
+function left(m){const n=m.userName;
+ if(!$('#lobby').hidden){const i=players.indexOf(n);if(i>-1)players.splice(i,1);
+  if(m.hostName)setHost(m.hostName);else if(n===me.hostName)setHost(players[0]||me.name)}
+ else{gone.add(n);if(m.hostName)setHost(m.hostName);else if(n===me.hostName)me.hostGone=true;
+  if(!$('#vote').hidden)document.querySelectorAll('.sus').forEach(b=>{const a=answers[+b.dataset.i];
+   if(a&&a.userName===n&&!b.disabled){b.disabled=true;b.insertAdjacentHTML('beforeend','<span class="tag">Left</span>');
+    if(picked===+b.dataset.i){picked=null;b.setAttribute('aria-pressed','false');$('#cast').disabled=true}}})}
+ renderLobby();toast(`${n} left the room.`)}
 
 /* ---- home and lobby ---- */
 const code=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
@@ -220,7 +231,8 @@ function go(create){const name=$('#name').value.trim(),typed=$('#room').value.to
  pending={name,room,create};send({type:'JOIN_ROOM',userName:name,roomId:room,create})}
 function joined(m){me.name=pending.name;me.room=pending.room;
  const others=[...(m.participants||[])],i=others.indexOf(me.name);if(i>-1)others.splice(i,1);
- players=[...others,me.name];me.host='isHost' in m?!!m.isHost:others.length===0;
+ players=[...others,me.name];me.hostName=others.length?others[0]:me.name;me.hostGone=false;gone.clear();
+ me.host='isHost' in m?!!m.isHost:me.hostName===me.name;
  if(!pending.create&&others.length===0)toast('That room was empty, so a new one was created. Share the code to invite friends.');
  pending=null;renderLobby();show('lobby')}
 function renderLobby(){$('#lcode').textContent=me.room;$('#lcount').textContent=players.length;
@@ -243,9 +255,9 @@ function sendHint(){if(hintSent)return;const v=$('#hint').value.trim();
 
 /* ---- vote ---- */
 function startVote(m){answers=m.answers||[];picked=null;voted=false;$('#vstat').textContent='';$('#cast').hidden=false;$('#cast').disabled=true;
- $('#vlist').innerHTML=answers.map((a,i)=>{const self=isMe(a.uid,a.userName),none=!a.input||a.input==='not given';
-  return `<button class="sus" data-i="${i}" aria-pressed="false" ${self?'disabled':''}>${av(a.userName)}<span class="t"><b>${esc(a.userName)}</b>
-  <em class="${none?'none':''}">${none?'no hint given':'“'+esc(a.input)+'”'}</em></span>${self?'<span class="tag">You</span>':''}</button>`}).join('');
+ $('#vlist').innerHTML=answers.map((a,i)=>{const self=isMe(a.uid,a.userName),out=!self&&gone.has(a.userName),none=!a.input||a.input==='not given';
+  return `<button class="sus" data-i="${i}" aria-pressed="false" ${self||out?'disabled':''}>${av(a.userName)}<span class="t"><b>${esc(a.userName)}</b>
+  <em class="${none?'none':''}">${none?'no hint given':'“'+esc(a.input)+'”'}</em></span>${self?'<span class="tag">You</span>':out?'<span class="tag">Left</span>':''}</button>`}).join('');
  show('vote');startClock(VOTE,()=>wait('Counting the votes','Every ballot is being tallied.'))}
 $('#vlist').onclick=e=>{const b=e.target.closest('.sus');if(!b||voted||b.disabled)return;picked=+b.dataset.i;
  document.querySelectorAll('.sus').forEach(x=>x.setAttribute('aria-pressed',x===b));$('#cast').disabled=false};
@@ -264,7 +276,8 @@ function result(win,imp,why,word){const crew=win==='crew',imps=me.role==='impost
  $('#rimp').textContent=imp||'Unknown';$('#rword').textContent=me.word||'Not revealed';
  $('#recap').innerHTML=answers.map(a=>{const none=!a.input||a.input==='not given';
   return `<li>${av(a.userName)}<span><b>${esc(a.userName)}</b> · <em>${none?'no hint':esc(a.input)}</em></span>${a.userName===imp?'<span class="tag red">Impostor</span>':''}</li>`}).join('');
- $('#again').hidden=!me.host;$('#again2').hidden=me.host;show('result')}
+ $('#again').hidden=!me.host;$('#again2').hidden=me.host;
+ $('#again2').textContent=me.hostGone?'The host left, so this room cannot start another round. Leave and create a new one.':'Waiting for the host to start another round';show('result')}
 
 /* ---- wiring ---- */
 $('#join').onclick=()=>go(false);$('#create').onclick=()=>go(true);

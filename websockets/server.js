@@ -1,6 +1,8 @@
 import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
 import http from "http";
+import { json } from "stream/consumers";
+import { eventNames } from "process";
 
 const server = http.createServer((req, res) => {
     if (req.url === '/ping') {
@@ -226,25 +228,25 @@ wss.on("connection",(socket)=>{
             // Transfer host if host left
             if (room.hostId === userId) {
                 room.hostId = participants.values().next().value;
+                const sock=uidSocket.get(room.hostId);
+                sock.send(JSON.stringify({
+                    event:"you are new host"
+                }))
             }
 
             uidUsername.delete(userId);
             userInputs.delete(userId);
 
         } else {
-            // MID-GAME STATE: Keep them in the room data for consistency, but handle edge cases
             
-            // If Impostor leaves during the guess phase, Crew instantly wins
             if (userId === room.impostorId && room.state === "impostor-guess") {
                 if (room.guessTimer) clearTimeout(room.guessTimer);
                 room.winner = "crew";
                 room.state = "round-end";
-                // Notify others (reusing guessPhase logic by passing a fake winner)
                 guessPhase("crew", userId, roomId);
                 return;
             }
 
-            // Speed up the phase if the remaining players are done
             if (room.state === "submissions") {
                 if (userInputs.size === participants.size - 1) {
                     clearTimeout(room.inputTimer);
@@ -258,7 +260,6 @@ wss.on("connection",(socket)=>{
             }
         }
 
-        // Notify remaining players
         for(const p of participants){
             if (p === userId) continue;
             const sock=uidSocket.get(p);
