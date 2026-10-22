@@ -94,7 +94,7 @@ h1{font-size:clamp(1.65rem,7.2vw,2.1rem)}
   <label class="lbl" for="name">Your name</label><input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Aman">
   <label class="lbl" for="room">Room code</label><input id="room" maxlength="8" autocapitalize="characters" autocomplete="off" placeholder="e.g. KFTP" style="text-transform:uppercase;letter-spacing:.18em">
   <div class="stack"><button class="btn" id="join">Join room</button><button class="btn ghost" id="create">Create a new room</button></div>
-  <p class="fine">3 to 8 players · best with 4 or more · no accounts</p>
+  <p class="fine">Create uses the code you typed, or picks a random one.<br>3 to 8 players · best with 4 or more · no accounts</p>
  </section>
 
  <section class="screen" id="lobby" hidden>
@@ -204,6 +204,7 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
  else if(is('new player joined')){players.push(m.userName);renderLobby();toast(`${m.userName} joined.`)}
  else if(is('back to lobby')){players=m.participants||players;stopClock();me.role=null;me.word=null;answers=[];renderLobby();show('lobby')}
  else if(is('only host'))toast('Only the host can do that.');
+ else if(is('room not found')||is('room already exists')){pending=null;toast(is('room not found')?'No room with that code. Check it, or create a new room.':'That room code is already taken. Try another.')}
  else if(is('not enough'))toast('At least 3 players are needed to start.');
  else if(is('not authorized'))toast('Only the host can start the game.');
  else if(is('only impostor'))toast('Only the impostor can make a guess.');
@@ -212,11 +213,11 @@ function onMsg(e){let m;try{m=JSON.parse(e.data)}catch{return}
 
 /* ---- home and lobby ---- */
 const code=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
-function go(create){const name=$('#name').value.trim(),room=create?code():$('#room').value.trim().toUpperCase();
+function go(create){const name=$('#name').value.trim(),typed=$('#room').value.toUpperCase().replace(/[^A-Z0-9]/g,''),room=typed||(create?code():'');
  if(!name)return toast('Enter your name first.');if(!room)return toast('Enter a room code, or create a new room.');
  try{localStorage.setItem('imp-name',name)}catch{}
  if(!ws||ws.readyState!==1)return toast('Not connected yet. The server may be waking up, so try again in a few seconds.');
- pending={name,room,create};send({type:'JOIN_ROOM',userName:name,roomId:room})}
+ pending={name,room,create};send({type:'JOIN_ROOM',userName:name,roomId:room,create})}
 function joined(m){me.name=pending.name;me.room=pending.room;
  const others=[...(m.participants||[])],i=others.indexOf(me.name);if(i>-1)others.splice(i,1);
  players=[...others,me.name];me.host='isHost' in m?!!m.isHost:others.length===0;
