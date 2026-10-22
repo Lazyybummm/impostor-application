@@ -69,6 +69,44 @@ function votingPhase(roomId){
 }
 
 
+function guessPhase(winner,userId,roomId)
+{
+    const participants=rooms.get(roomId);
+    const selectedWord=roomData.get(roomId).selectedWord;
+    const impostorUsername=uidUsername.get(userId);
+    for(const i of participants){
+        const sock=uidSocket.get(i);
+        if(winner=='impostor'){
+            if(userId==i){
+                sock.send(JSON.stringify({
+                    event:"you win"
+                }))
+            }
+            sock.send(JSON.stringify({
+                event:"crew loses , impostor made a correct guess",
+                impostorUsername:impostorUsername
+            }))
+        }
+        else{
+            if(userId==i){
+                sock.send(JSON.stringify({
+                    event:"you lose "
+                }))
+            }
+            sock.send(JSON.stringify({
+                event:"crew wins , impostor made a inccorrect guess",
+                impostorUsername:impostorUsername
+            }))
+
+        }
+
+
+    }
+    
+}
+    //should handle the win-lose outcome and distribution 
+
+
 function resultsPhase(roomId){
     let voteCounts=new Map();
     const currentvotes=votes.get(roomId);
@@ -93,6 +131,28 @@ function resultsPhase(roomId){
 
     if(mostVoted==roomData.get(roomId).impostorId){
         //impostor guess
+        roomData.get(roomId).state="impostor-guess"
+        for(const [userId,targetId] of currentvotes){
+            const sock=uidSocket.get(userId);
+            if(userId==mostVoted){
+                sock.send(JSON.stringify({
+                    event:"make a guess to win the game"
+                }))
+                continue;
+            }
+          
+            sock.send(JSON.stringify({
+                event:"impostor caught , waiting for the guess now "
+            }))
+
+        }
+       
+        roomData.get(roomId).guessTimer=setTimeout(() => {
+            guessPhase("crew", mostVoted, roomId);
+            roomData.get(roomId).winner = "crew";
+            roomData.get(roomId).state = "round-end";
+        }, 20000);
+
     }
     else{
         const impostorUsername=uidUsername.get(roomData.get(roomId).impostorId);
@@ -129,6 +189,18 @@ wss.on("connection",(socket)=>{
                     msg:"successfully joined the room",
                     participants:getParticipants(roomId)
                  }))
+                 const uids=rooms.get(roomId);
+                 for(const i of uids){
+                    const sock=uidSocket.get(i);
+                    if(i==socket.clientId){
+                        continue;
+                    }
+                    sock.send(JSON.stringify({
+                        event:"new player joined",
+                        userName:payload.userName
+                    }))
+
+                 }
             }
             else{
                  //if the room does'nt exists(a fresh room);
@@ -213,12 +285,7 @@ wss.on("connection",(socket)=>{
             roomData.get(roomId).state="submissions";
             userInputs.clear(); // Clear any old inputs for this room
 
-            for(const i of users){
-                const sock=uidSocket.get(i);
-                sock.send(JSON.stringify({
-                    event:"input your answer"
-                }))
-            }
+           
             
             // set a timeout for the submission phase here
             roomData.get(roomId).inputTimer = setTimeout(() => {
@@ -252,6 +319,68 @@ wss.on("connection",(socket)=>{
             if(votes.get(roomId).size == rooms.get(roomId).size){
                 clearTimeout(roomData.get(roomId).votingTimer);
                 resultsPhase(roomId); 
+            }
+        }
+        if(payload.type=='IMPOSTOR_GUESS'){
+            const roomId=payload.roomId;
+            const inputWord=payload.inputWord;
+            const userId=socket.clientId;
+            let winner;
+            if(userId!==roomData.get(roomId).impostorId){
+                socket.send(JSON.stringify({
+                    event:"only impostor is allowed to do this action"
+                }))
+                return;
+            }
+           if(inputWord.toLowerCase()==roomData.get(roomId).selectedWord.toLowerCase())
+           {
+            winner='impostor';
+           }
+           else{
+            winner='crew'
+           }
+            if(roomData.get(roomId).guessTimer){
+                clearTimeout(roomData.get(roomId).guessTimer);
+                guessPhase(winner,userId,roomId);
+                roomData.get(roomId).winner=winner;
+                roomData.get(roomId).state='round-end'
+                
+            }
+
+        }
+        if(payload.type=='PLAY_AGAIN'){
+            const roomId=payload.roomId;
+            const userId=socket.clientId;
+            if(userId!=roomData.get(roomId).hostId){
+                socket.send(JSON.stringify({
+                    event:"only host is allowed to perform this action"
+                }))
+                return;
+            }
+            if(roomData.get(roomId).inputTimer){
+                clearTimeout(roomData.get(roomId).inputTimer)
+            }
+            if(roomData.get(roomId).guessTimer){
+                clearTimeout(roomData.get(roomId).guessTimer)
+            }
+            if(roomData.get(roomId).votingTimer){
+                clearTimeout(roomData.get(roomId).votingTimer)
+            }
+            delete roomData.get(roomId).selectedWord;
+            delete roomData.get(roomId).impostorId;
+            delete roomData.get(roomId).winner;
+            delete roomData.get(roomId).answers;
+            votes.delete(roomId);
+            userInputs.clear();
+            //need to notify everyone that new room has started
+            roomData.get(roomId).state="created"
+            const participants=rooms.get(roomId);
+            for(const p of participants){
+                const sock=uidSocket.get(p);
+                sock.send(JSON.stringify({
+                    event:"back to lobby",
+                    participants:getParticipants(roomId)
+                }))
             }
         }
     }  
