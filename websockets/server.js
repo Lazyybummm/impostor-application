@@ -1,8 +1,6 @@
 import { WebSocketServer } from "ws";
 import { nanoid } from "nanoid";
 import http from "http";
-import { json } from "stream/consumers";
-import { eventNames } from "process";
 
 const server = http.createServer((req, res) => {
     if (req.url === '/ping') {
@@ -27,10 +25,159 @@ let userInputs=new Map();
 
 
 const wordPacks = {
-    "Food": ["apple", "orange", "lemon", "yogurt", "castle", "desert"],
-    "Places": ["bridge", "forest", "island", "garden", "tunnel", "valley", "castle", "desert"],
-    "Animals": ["dolphin", "tiger", "zebra", "kitten", "parrot", "rabbit", "insect"],
-    "Objects": ["candle", "engine", "guitar", "hammer", "jacket", "kettle", "ladder", "magnet", "needle", "pencil", "quartz", "rocket", "saddle", "umbrella", "wagon", "anchor", "basket", "cactus", "feather", "helmet", "mirror", "napkin", "silver", "window", "yellow", "zipper", "bottle"]
+    "Indian Street Food": [
+        { real: "Pani Puri", decoy: "Sev Puri" },
+        { real: "Vada Pav", decoy: "Misal Pav" },
+        { real: "Pav Bhaji", decoy: "Dabeli" },
+        { real: "Jalebi", decoy: "Imarti" },
+        { real: "Kachori", decoy: "Samosa" },
+        { real: "Momos", decoy: "Gyoza" },
+        { real: "Chole Bhature", decoy: "Amritsari Kulcha" },
+        { real: "Dahi Puri", decoy: "Bhel Puri" },
+        { real: "Kathi Roll", decoy: "Shawarma" },
+        { real: "Cutting Chai", decoy: "Filter Coffee" },
+        { real: "Kulfi Falooda", decoy: "Ice Gola" },
+        { real: "Aloo Tikki", decoy: "Ragda Pattice" },
+        { real: "Maggi", decoy: "Top Ramen" },
+        { real: "Sugarcane Juice", decoy: "Nimbu Pani" },
+        { real: "Bun Maska", decoy: "Rusk" }
+    ],
+    "90s Nostalgia": [
+        { real: "Doordarshan", decoy: "Cartoon Network" },
+        { real: "Shaktimaan", decoy: "Captain Vyom" },
+        { real: "Tazos", decoy: "Pogs" },
+        { real: "Walkman", decoy: "Discman" },
+        { real: "Cassette Tape", decoy: "Floppy Disk" },
+        { real: "Nokia 3310", decoy: "Nokia 1100" },
+        { real: "Gully Cricket", decoy: "Book Cricket" },
+        { real: "Parle-G", decoy: "Marie Gold" },
+        { real: "Rasna", decoy: "Tang" },
+        { real: "Antakshari", decoy: "Dumb Charades" },
+        { real: "Chacha Chaudhary", decoy: "Tinkle" },
+        { real: "Champak", decoy: "Chandamama" },
+        { real: "Brick Game", decoy: "Snake Game" },
+        { real: "Hero Pen", decoy: "Reynolds Pen" },
+        { real: "Pager", decoy: "Landline Phone" }
+    ],
+    "Global Travel": [
+        { real: "Santorini", decoy: "Mykonos" },
+        { real: "Machu Picchu", decoy: "Petra" },
+        { real: "Burj Khalifa", decoy: "Shanghai Tower" },
+        { real: "Colosseum", decoy: "Parthenon" },
+        { real: "Venice Gondola", decoy: "Amsterdam Canal Cruise" },
+        { real: "Bali", decoy: "Phuket" },
+        { real: "Taj Mahal", decoy: "Humayun's Tomb" },
+        { real: "Northern Lights", decoy: "Midnight Sun" },
+        { real: "Great Wall", decoy: "Angkor Wat" },
+        { real: "Sagrada Familia", decoy: "Notre-Dame" },
+        { real: "Niagara Falls", decoy: "Victoria Falls" },
+        { real: "Maldives", decoy: "Seychelles" },
+        { real: "Shibuya Crossing", decoy: "Times Square" },
+        { real: "Leh Ladakh", decoy: "Spiti Valley" },
+        { real: "Big Ben", decoy: "Tower Bridge" }
+    ],
+    "Pop Culture": [
+        { real: "Shah Rukh Khan", decoy: "Salman Khan" },
+        { real: "Sholay", decoy: "Deewar" },
+        { real: "Gangs of Wasseypur", decoy: "Sacred Games" },
+        { real: "Breaking Bad", decoy: "Better Call Saul" },
+        { real: "Squid Game", decoy: "Alice in Borderland" },
+        { real: "Game of Thrones", decoy: "House of the Dragon" },
+        { real: "Taylor Swift", decoy: "Ariana Grande" },
+        { real: "Barbie", decoy: "Oppenheimer" },
+        { real: "Mirzapur", decoy: "Panchayat" },
+        { real: "Money Heist", decoy: "Lupin" },
+        { real: "Coldplay", decoy: "Imagine Dragons" },
+        { real: "Arijit Singh", decoy: "Atif Aslam" },
+        { real: "Kantara", decoy: "Pushpa" },
+        { real: "RRR", decoy: "Baahubali" },
+        { real: "Instagram Reels", decoy: "TikTok" }
+    ],
+    "Office Life": [
+        { real: "Standup Meeting", decoy: "Retro Meeting" },
+        { real: "Zoom Call", decoy: "Teams Call" },
+        { real: "Appraisal", decoy: "Increment Letter" },
+        { real: "Excel Sheet", decoy: "Google Sheets" },
+        { real: "Water Cooler", decoy: "Coffee Machine" },
+        { real: "Cubicle", decoy: "Hot Desk" },
+        { real: "Slack", decoy: "WhatsApp Group" },
+        { real: "Work From Home", decoy: "Hybrid Model" },
+        { real: "PowerPoint", decoy: "Canva" },
+        { real: "Lanyard", decoy: "ID Card" },
+        { real: "Layoffs", decoy: "Resignation" },
+        { real: "Sticky Notes", decoy: "Whiteboard" },
+        { real: "Office Tiffin", decoy: "Canteen Thali" },
+        { real: "Notice Period", decoy: "Probation" },
+        { real: "LinkedIn", decoy: "Naukri" }
+    ],
+    "Weird Animals": [
+        { real: "Axolotl", decoy: "Salamander" },
+        { real: "Pangolin", decoy: "Armadillo" },
+        { real: "Platypus", decoy: "Echidna" },
+        { real: "Narwhal", decoy: "Beluga" },
+        { real: "Blobfish", decoy: "Anglerfish" },
+        { real: "Capybara", decoy: "Beaver" },
+        { real: "Komodo Dragon", decoy: "Gharial" },
+        { real: "Sloth", decoy: "Koala" },
+        { real: "Red Panda", decoy: "Raccoon" },
+        { real: "Naked Mole Rat", decoy: "Meerkat" },
+        { real: "Aye-aye", decoy: "Lemur" },
+        { real: "Okapi", decoy: "Zebra" },
+        { real: "Quokka", decoy: "Wallaby" },
+        { real: "Mandrill", decoy: "Baboon" },
+        { real: "Dumbo Octopus", decoy: "Cuttlefish" }
+    ],
+    "Gadgets and Tech": [
+        { real: "iPhone", decoy: "Google Pixel" },
+        { real: "AirPods", decoy: "Galaxy Buds" },
+        { real: "PlayStation", decoy: "Xbox" },
+        { real: "Kindle", decoy: "iPad" },
+        { real: "Tesla", decoy: "Ola Electric" },
+        { real: "Alexa", decoy: "Siri" },
+        { real: "ChatGPT", decoy: "Gemini" },
+        { real: "Fitbit", decoy: "Apple Watch" },
+        { real: "GoPro", decoy: "DJI Drone" },
+        { real: "Jio", decoy: "Airtel" },
+        { real: "Nintendo Switch", decoy: "Steam Deck" },
+        { real: "Starlink", decoy: "Wi-Fi Router" },
+        { real: "JBL Speaker", decoy: "Bose Soundbar" },
+        { real: "Raspberry Pi", decoy: "Arduino" },
+        { real: "Power Bank", decoy: "Wireless Charger" }
+    ],
+    "Sports Arena": [
+        { real: "Virat Kohli", decoy: "Rohit Sharma" },
+        { real: "Lionel Messi", decoy: "Cristiano Ronaldo" },
+        { real: "IPL", decoy: "Big Bash" },
+        { real: "Wimbledon", decoy: "US Open" },
+        { real: "Neeraj Chopra", decoy: "Usain Bolt" },
+        { real: "Formula 1", decoy: "MotoGP" },
+        { real: "Sachin Tendulkar", decoy: "Rahul Dravid" },
+        { real: "Kabaddi", decoy: "Kho Kho" },
+        { real: "FIFA World Cup", decoy: "Olympics" },
+        { real: "Mary Kom", decoy: "Saina Nehwal" },
+        { real: "Magnus Carlsen", decoy: "Viswanathan Anand" },
+        { real: "Eden Gardens", decoy: "Wankhede Stadium" },
+        { real: "Yorker", decoy: "Bouncer" },
+        { real: "Real Madrid", decoy: "Barcelona" },
+        { real: "Chennai Super Kings", decoy: "Mumbai Indians" }
+    ],
+    "Big Fat Indian Wedding": [
+        { real: "Baraat", decoy: "Sangeet" },
+        { real: "Mehendi", decoy: "Haldi" },
+        { real: "Sherwani", decoy: "Bandhgala" },
+        { real: "Lehenga", decoy: "Banarasi Saree" },
+        { real: "Mangalsutra", decoy: "Sindoor" },
+        { real: "Saat Phere", decoy: "Kanyadaan" },
+        { real: "Wedding Planner", decoy: "Pandit Ji" },
+        { real: "Shaadi.com", decoy: "Jeevansathi" },
+        { real: "Paan Counter", decoy: "Chaat Counter" },
+        { real: "Mandap", decoy: "Reception Stage" },
+        { real: "Choora", decoy: "Kaleere" },
+        { real: "Vidaai", decoy: "Griha Pravesh" },
+        { real: "Shagun Envelope", decoy: "Gift Hamper" },
+        { real: "Gulab Jamun", decoy: "Moong Dal Halwa" },
+        { real: "Destination Wedding", decoy: "Court Marriage" }
+    ]
 };
 
 //need to be some metadata about the room here too , should be maintained 
@@ -229,9 +376,11 @@ wss.on("connection",(socket)=>{
             if (room.hostId === userId) {
                 room.hostId = participants.values().next().value;
                 const sock=uidSocket.get(room.hostId);
-                sock.send(JSON.stringify({
-                    event:"you are new host"
-                }))
+                if(sock && sock.readyState === 1) {
+                    sock.send(JSON.stringify({
+                        event:"you are new host"
+                    }))
+                }
             }
 
             uidUsername.delete(userId);
@@ -298,10 +447,12 @@ wss.on("connection",(socket)=>{
                     if(i==socket.clientId){
                         continue;
                     }
-                    sock.send(JSON.stringify({
-                        event:"new player joined",
-                        userName:payload.userName
-                    }))
+                    if(sock && sock.readyState === 1) {
+                        sock.send(JSON.stringify({
+                            event:"new player joined",
+                            userName:payload.userName
+                        }))
+                    }
 
                  }
             }
@@ -354,6 +505,12 @@ wss.on("connection",(socket)=>{
             //transfer host 
             if (room.hostId === uid) {
                 room.hostId = participants.values().next().value;
+                const sock=uidSocket.get(room.hostId);
+                if(sock && sock.readyState === 1) {
+                    sock.send(JSON.stringify({
+                        event:"you are new host"
+                    }))
+                }
             }
 
             //notify the users and the participants too 
@@ -391,12 +548,13 @@ wss.on("connection",(socket)=>{
             const randomCatIndex = Math.floor(Math.random() * categories.length);
             const selectedCategory = categories[randomCatIndex];
             
-            // Get a random word from the selected category
-            const wordsInCat = wordPacks[selectedCategory];
-            const randomWordIndex = Math.floor(Math.random() * wordsInCat.length);
-            const selectedWord = wordsInCat[randomWordIndex];
+            // Get a random word pair from the selected category
+            const pairsInCat = wordPacks[selectedCategory];
+            const randomPairIndex = Math.floor(Math.random() * pairsInCat.length);
+            const selectedPair = pairsInCat[randomPairIndex];
             
-            roomData.get(roomId).selectedWord = selectedWord;
+            roomData.get(roomId).selectedWord = selectedPair.real;
+            roomData.get(roomId).decoyWord = selectedPair.decoy;
             roomData.get(roomId).category = selectedCategory;
 
             let temp=[...rooms.get(roomId)];
@@ -408,18 +566,20 @@ wss.on("connection",(socket)=>{
              //now after choosing the word and the impostor , time to deliver it to the respective users 
             for(const i of users){
                 const sock=uidSocket.get(i);
+                if(!sock || sock.readyState !== 1) continue;
+
                 if(i==roomData.get(roomId).impostorId){
                     sock.send(JSON.stringify({
                         event:"game started",
                         role:"impostor",
-                        category: selectedCategory // Sent to impostor
+                        secretWord: selectedPair.decoy // Impostor gets decoy word
                     }))
                 }
                 else{
                     sock.send(JSON.stringify({
                         event:"game started",
                         role:"crew",
-                        secretWord:selectedWord
+                        secretWord:selectedPair.real // Crew gets real word
                     }))
                 }
             }
@@ -509,6 +669,7 @@ wss.on("connection",(socket)=>{
                 clearTimeout(roomData.get(roomId).votingTimer)
             }
             delete roomData.get(roomId).selectedWord;
+            delete roomData.get(roomId).decoyWord;
             delete roomData.get(roomId).impostorId;
             delete roomData.get(roomId).winner;
             delete roomData.get(roomId).answers;
